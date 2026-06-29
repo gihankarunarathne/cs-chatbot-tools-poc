@@ -1,15 +1,81 @@
 from fastapi import APIRouter, HTTPException, Request
 from langchain_core.messages import HumanMessage
 
-from ..models.api import ChatRequest, ChatResponse, IntentDebug
+from ..models.api import ChatRequest, ChatResponse, IntentDebug, ToolCallDebug, TurnDebug
+from ..models.enums import IntentStatus
 from .session import list_sessions, new_session_id, register_session
 
 router = APIRouter()
+
+DEMO_SCENARIOS = [
+    {
+        "id": "order_tracking",
+        "title": "Order Tracking",
+        "description": "Customer tracking an in-transit order",
+        "turns": [
+            "Where is my order NXY-1001? I ordered it 3 days ago.",
+        ],
+    },
+    {
+        "id": "refund_inquiry",
+        "title": "Refund Status",
+        "description": "Customer checking refund on a delivered order",
+        "turns": [
+            "I returned my headphones last week. Has my refund for order NXY-2002 been processed?",
+        ],
+    },
+    {
+        "id": "multi_intent",
+        "title": "Multi-Intent: Track + Refund",
+        "description": "Customer asks about two different orders in one message",
+        "turns": [
+            "Hey, where is order NXY-1001 and also did my refund for NXY-2002 go through?",
+        ],
+    },
+    {
+        "id": "clarification_flow",
+        "title": "Clarification Flow",
+        "description": "Customer forgets order ID — bot asks, then resolves",
+        "turns": [
+            "I want to track my order please",
+            "It's NXY-3003",
+        ],
+    },
+    {
+        "id": "warranty_claim",
+        "title": "Warranty Claim",
+        "description": "Customer wants to claim warranty on a product",
+        "turns": [
+            "My Samsung Galaxy stopped charging. I want to claim warranty on product PRD-A.",
+        ],
+    },
+    {
+        "id": "return_request",
+        "title": "Return Request",
+        "description": "Customer wants to return a delivered order",
+        "turns": [
+            "I'd like to return my order NXY-2002. The headphones don't fit properly.",
+        ],
+    },
+    {
+        "id": "human_escalation",
+        "title": "Human Escalation",
+        "description": "Customer insists on speaking to a human agent",
+        "turns": [
+            "I've been waiting 3 weeks for my refund. This is unacceptable. I want to speak to a manager right now.",
+        ],
+    },
+]
 
 
 @router.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@router.get("/demo/scenarios")
+async def get_demo_scenarios():
+    return {"scenarios": DEMO_SCENARIOS}
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -30,9 +96,36 @@ async def chat(request: Request, body: ChatRequest):
     awaiting_clarification = bool(final_state.get("clarification_question"))
 
     intent_debug = [
-        IntentDebug(intent=i.intent, status=i.status, entities=i.entities)
+        IntentDebug(
+            intent=i.intent,
+            status=i.status,
+            entities=i.entities,
+            missing_slots=i.missing_slots,
+        )
         for i in intents
     ]
+
+    # Build tool call debug from resolved intents
+    tool_calls: list[ToolCallDebug] = []
+    for item in intents:
+        if item.status == IntentStatus.RESOLVED:
+            for tool_name, output in item.tool_results.items():
+                from ..tools.registry import _build_tool_kwargs_for_debug
+                inputs = _build_tool_kwargs_for_debug(tool_name, item.entities)
+                tool_calls.append(ToolCallDebug(
+                    tool_name=tool_name,
+                    inputs=inputs,
+                    output=output,
+                    intent=item.intent,
+                ))
+
+    # Infer which nodes executed this turn
+    if awaiting_clarification:
+        nodes_executed = ["intent_detection", "clarify"]
+    else:
+        nodes_executed = ["intent_detection", "response_generation"]
+
+    turn_debug = TurnDebug(nodes_executed=nodes_executed, tool_calls=tool_calls)
 
     return ChatResponse(
         session_id=session_id,
@@ -40,6 +133,7 @@ async def chat(request: Request, body: ChatRequest):
         intents=intent_debug,
         requires_handover=requires_handover,
         awaiting_clarification=awaiting_clarification,
+        turn_debug=turn_debug,
     )
 
 

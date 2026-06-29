@@ -31,3 +31,14 @@ def call_tool(tool_name: str, **kwargs) -> dict:
     if hasattr(result, "model_dump"):
         return result.model_dump()
     return result
+
+
+def _build_tool_kwargs_for_debug(tool_name: str, entities: dict[str, str]) -> dict:
+    mapping = {
+        "lookup_order": {"order_id": entities.get("order_id", "")},
+        "check_refund_status": {"order_id": entities.get("order_id", "")},
+        "check_warranty": {"product_id": entities.get("product_id", "")},
+        "check_return_eligibility": {"order_id": entities.get("order_id", "")},
+        "lookup_product": {"product_id": entities.get("product_id", "")},
+    }
+    return mapping.get(tool_name, {})

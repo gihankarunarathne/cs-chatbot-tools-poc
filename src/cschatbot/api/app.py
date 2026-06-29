@@ -1,10 +1,15 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from ..graph.builder import build_graph
 from .routes import router
+
+STATIC_DIR = Path(__file__).parent.parent / "static"
 
 
 @asynccontextmanager
@@ -29,4 +34,12 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(router)
+
+    if STATIC_DIR.exists():
+        app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+        @app.get("/")
+        async def serve_ui():
+            return FileResponse(str(STATIC_DIR / "index.html"))
+
     return app

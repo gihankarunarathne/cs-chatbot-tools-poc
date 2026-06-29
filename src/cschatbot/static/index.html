@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CS Chatbot POC — LangGraph Demo</title>
+<style>
+:root {
+  --bg: #FFFFFF;
+  --panel: #F8FAFC;
+  --panel2: #F1F5F9;
+  --card: #FFFFFF;
+  --code-bg: #0F172A;
+  --border: #E2E8F0;
+  --border2: #CBD5E1;
+  --text: #0F172A;
+  --text-muted: #64748B;
+  --text-faint: #94A3B8;
+  --accent: #6366F1;
+  --accent-bg: #EEF2FF;
+  --ok: #059669;
+  --ok-bg: #DCFCE7;
+  --warn: #D97706;
+  --warn-bg: #FEF3C7;
+  --err: #DC2626;
+  --err-bg: #FEE2E2;
+  --info: #2563EB;
+  --info-bg: #DBEAFE;
+  --user-bubble: #6366F1;
+  --bot-bubble: #F1F5F9;
+  --node-idle-fill: #F8FAFC;
+  --node-idle-stroke: #CBD5E1;
+  --node-active-fill: #6366F1;
+  --node-active-stroke: #4F46E5;
+  --node-term-fill: #10B981;
+  --node-term-stroke: #059669;
+  --edge-idle: #CBD5E1;
+  --edge-active: #6366F1;
+  --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 52px 1fr;
+  grid-template-columns: minmax(420px, 46%) 1fr;
+  grid-template-areas: "header header" "chat right";
+  overflow: hidden;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+header {
+  grid-area: header;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  z-index: 10;
+}
+.header-left { display: flex; align-items: center; gap: 10px; }
+.logo { font-size: 15px; font-weight: 700; color: var(--text); }
+.logo em { color: var(--accent); font-style: normal; }
+.badge-pill {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: var(--accent-bg); color: var(--accent);
+  border: 1px solid #C7D2FE; font-weight: 500;
+}
+.session-label {
+  font-size: 12px; color: var(--text-muted); font-family: 'SF Mono', Menlo, Consolas, monospace;
+}
+.header-right { display: flex; align-items: center; gap: 8px; }
+.btn {
+  height: 32px; padding: 0 12px; border-radius: 6px;
+  border: 1px solid var(--border2); background: var(--card);
+  color: var(--text); cursor: pointer; font-size: 12.5px;
+  font-family: inherit; transition: all .12s; display: flex; align-items: center; gap: 5px;
+}
+.btn:hover { background: var(--panel2); border-color: #94A3B8; }
+.btn-accent {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.btn-accent:hover { background: #4F46E5; border-color: #4F46E5; }
+.btn-accent:disabled { background: #C7D2FE; border-color: #C7D2FE; cursor: not-allowed; }
+.btn-ghost { border-color: transparent; background: transparent; color: var(--text-muted); }
+.btn-ghost:hover { background: var(--panel2); color: var(--text); border-color: var(--border); }
+
+/* ── Chat panel ──────────────────────────────────────────────────────────── */
+#chat-panel {
+  grid-area: chat;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg);
+}
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  scroll-behavior: smooth;
+}
+.chat-messages::-webkit-scrollbar { width: 4px; }
+.chat-messages::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.msg { display: flex; gap: 10px; animation: msgIn .2s ease; }
+@keyframes msgIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+
+.msg-avatar {
+  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; margin-top: 2px;
+  display: flex; align-items: center; justify-content: center; font-size: 13px;
+}
+.msg.human .msg-avatar { background: #EEF2FF; }
+.msg.bot .msg-avatar { background: var(--panel2); }
+
+.msg-body { flex: 1; min-width: 0; }
+.msg-name { font-size: 11px; color: var(--text-muted); font-weight: 500; margin-bottom: 4px; }
+.msg-bubble {
+  display: inline-block; max-width: 88%;
+  padding: 9px 13px; border-radius: 12px;
+  font-size: 13.5px; line-height: 1.5; white-space: pre-wrap;
+  box-shadow: var(--shadow);
+}
+.msg.human .msg-bubble {
+  background: var(--user-bubble); color: #fff;
+  border-bottom-left-radius: 4px;
+}
+.msg.human { flex-direction: row-reverse; }
+.msg.human .msg-body { text-align: right; }
+.msg.human .msg-name { text-align: right; }
+.msg.human .msg-tags { justify-content: flex-end; }
+.msg.bot .msg-bubble {
+  background: var(--bot-bubble); color: var(--text);
+  border-bottom-left-radius: 4px; border: 1px solid var(--border);
+}
+.msg.bot.clarify .msg-bubble { border-color: #FCD34D; background: #FFFBEB; }
+.msg.bot.handover .msg-bubble { border-color: #FCA5A5; background: #FFF5F5; }
+
+.msg-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.chip {
+  font-size: 10.5px; padding: 1px 8px; border-radius: 999px; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.chip-resolved   { background: var(--ok-bg);   color: var(--ok); }
+.chip-pending    { background: var(--info-bg);  color: var(--info); }
+.chip-needs_info { background: var(--warn-bg);  color: var(--warn); }
+.chip-handover   { background: var(--err-bg);   color: var(--err); }
+.chip-tool       { background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; }
+
+.typing-wrap { display: flex; gap: 5px; align-items: center;
+               padding: 9px 13px; background: var(--bot-bubble);
+               border: 1px solid var(--border); border-radius: 12px;
+               border-bottom-left-radius: 4px; width: fit-content; box-shadow: var(--shadow); }
+.typing-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint);
+              animation: blink 1.2s infinite; }
+.typing-dot:nth-child(2) { animation-delay: .2s; }
+.typing-dot:nth-child(3) { animation-delay: .4s; }
+@keyframes blink { 0%,60%,100%{opacity:.3;transform:translateY(0)} 30%{opacity:1;transform:translateY(-3px)} }
+
+.sys-line { text-align: center; font-size: 11px; color: var(--text-faint); font-style: italic; padding: 2px 0; }
+
+/* Status strip */
+#status-strip {
+  display: none; padding: 6px 16px; font-size: 12px; font-weight: 500;
+  border-top: 1px solid; gap: 6px; align-items: center;
+}
+#status-strip.clarify {
+  display: flex; background: var(--warn-bg); border-color: #FCD34D; color: var(--warn);
+}
+#status-strip.handover {
+  display: flex; background: var(--err-bg); border-color: #FCA5A5; color: var(--err);
+}
+
+.composer {
+  border-top: 1px solid var(--border); padding: 12px 14px;
+  background: var(--card); flex-shrink: 0;
+}
+.composer-row { display: flex; gap: 8px; align-items: flex-end; }
+textarea#msg-input {
+  flex: 1; padding: 9px 12px; border-radius: 8px;
+  border: 1px solid var(--border2); background: var(--bg);
+  color: var(--text); font-size: 13.5px; resize: none;
+  font-family: inherit; line-height: 1.45;
+  min-height: 38px; max-height: 110px;
+  transition: border-color .15s;
+}
+textarea#msg-input:focus { outline: none; border-color: var(--accent); }
+textarea#msg-input::placeholder { color: var(--text-faint); }
+textarea#msg-input:disabled { background: var(--panel); color: var(--text-muted); }
+.send-btn {
+  width: 38px; height: 38px; border-radius: 8px; border: none;
+  background: var(--accent); color: #fff; cursor: pointer; font-size: 15px;
+  flex-shrink: 0; transition: background .12s; display: flex; align-items: center; justify-content: center;
+}
+.send-btn:hover { background: #4F46E5; }
+.send-btn:disabled { background: #C7D2FE; cursor: not-allowed; }
+
+/* ── Right panel ─────────────────────────────────────────────────────────── */
+#right-panel {
+  grid-area: right;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--panel);
+}
+
+/* Graph section */
+#graph-section {
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+}
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+}
+.section-title { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .4px; }
+.turn-badge { font-size: 11px; color: var(--text-faint); font-family: monospace; }
+
+svg#graph {
+  display: block;
+  width: 100%;
+  height: 250px;
+  padding: 8px 0;
+}
+
+/* Graph node styles via SVG classes */
+.node-idle   rect, .node-idle circle { fill: var(--node-idle-fill);   stroke: var(--node-idle-stroke);   stroke-width: 1.5; }
+.node-active rect, .node-active circle { fill: var(--node-active-fill); stroke: var(--node-active-stroke); stroke-width: 2; }
+.node-term   rect, .node-term   circle { fill: var(--node-term-fill);   stroke: var(--node-term-stroke);   stroke-width: 2; }
+.node-idle   text { fill: var(--text-muted); font-size: 11px; }
+.node-active text { fill: #fff; font-size: 11px; font-weight: 600; }
+.node-term   text { fill: #fff; font-size: 11px; font-weight: 600; }
+.node-active rect, .node-active circle,
+.node-term   rect, .node-term   circle { transition: fill .2s, stroke .2s; }
+.node-pulse { animation: nodePop .3s ease; }
+@keyframes nodePop { 0%{transform:scale(.88)} 60%{transform:scale(1.06)} 100%{transform:scale(1)} }
+
+.edge-idle   { stroke: var(--edge-idle);   stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+.edge-active { stroke: var(--edge-active); stroke-width: 2;   fill: none;
+               stroke-dasharray: 6 4; animation: flowDash .6s linear infinite; }
+@keyframes flowDash { to { stroke-dashoffset: -10; } }
+.edge-active.no-dash { stroke-dasharray: none; animation: none; }
+
+/* Tabs below graph */
+.tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
+  flex-shrink: 0;
+}
+.tab-btn {
+  padding: 9px 16px; font-size: 12.5px; cursor: pointer; user-select: none;
+  border-bottom: 2px solid transparent; color: var(--text-muted); font-weight: 500;
+  transition: all .12s; background: none; border-left: none; border-right: none; border-top: none;
+  font-family: inherit;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.tab-pane { display: none; flex: 1; overflow-y: auto; min-height: 0; }
+.tab-pane.active { display: flex; flex-direction: column; }
+.tab-pane::-webkit-scrollbar { width: 4px; }
+.tab-pane::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* Tool calls */
+.tools-header {
+  position: sticky; top: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; background: var(--card); border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.tools-count { color: var(--text-muted); }
+.tool-card {
+  margin: 8px 12px 0;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); overflow: hidden;
+  animation: cardIn .25s ease;
+}
+.tool-card.new-flash { animation: cardIn .25s ease, cardFlash .8s ease; }
+@keyframes cardIn { from { opacity:0; transform:translateY(3px); } to { opacity:1; transform:translateY(0); } }
+@keyframes cardFlash { 0%{background:var(--info-bg)} 100%{background:var(--card)} }
+.tool-card-head {
+  display: flex; align-items: center; padding: 10px 12px; cursor: pointer;
+  gap: 8px; transition: background .1s;
+}
+.tool-card-head:hover { background: var(--panel); }
+.chevron { font-size: 10px; color: var(--text-faint); transition: transform .15s; margin-left: auto; }
+.tool-card.open .chevron { transform: rotate(90deg); }
+.tool-name { font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 12.5px; font-weight: 600; color: var(--text); }
+.tool-intent-chip { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; background: var(--info-bg); color: var(--info); }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.dot-ok  { background: var(--ok); }
+.dot-err { background: var(--err); }
+.tool-body { display: none; padding: 0 12px 12px; border-top: 1px solid var(--border); }
+.tool-card.open .tool-body { display: block; }
+.io-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.io-section h4 {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .4px; font-weight: 600;
+  color: var(--text-muted); margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;
+}
+.copy-btn {
+  font-size: 10px; padding: 1px 6px; border: 1px solid #475569; border-radius: 3px;
+  background: transparent; color: #94A3B8; cursor: pointer; font-family: inherit;
+  transition: all .1s;
+}
+.copy-btn:hover { background: #1E293B; color: #E2E8F0; }
+pre.code-block {
+  background: var(--code-bg); color: #E2E8F0;
+  border-radius: 6px; padding: 8px; font-size: 11.5px; font-family: 'SF Mono', Menlo, Consolas, monospace;
+  overflow-x: auto; white-space: pre; line-height: 1.5; max-height: 180px; overflow-y: auto;
+}
+.json-key    { color: #7DD3FC; }
+.json-str    { color: #86EFAC; }
+.json-num    { color: #FCA5A5; }
+.json-bool   { color: #FDBA74; }
+.json-null   { color: #CBD5E1; }
+
+/* Intents pane */
+.intent-card {
+  margin: 8px 12px 0;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); overflow: hidden; animation: cardIn .2s ease;
+}
+.intent-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; }
+.intent-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.intent-body { padding: 0 12px 10px; display: flex; flex-direction: column; gap: 6px; }
+.entity-row { display: flex; gap: 5px; flex-wrap: wrap; }
+.entity-chip {
+  font-size: 11px; padding: 2px 8px; border-radius: 4px;
+  background: var(--panel2); border: 1px solid var(--border2);
+  font-family: monospace; color: var(--text);
+}
+.entity-key { color: var(--text-muted); }
+.missing-slots { font-size: 11.5px; color: var(--warn); }
+
+/* Demo pane */
+.demo-pane-inner { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.demo-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.speed-row { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-muted); }
+input[type=range] { accent-color: var(--accent); width: 70px; }
+.scenario-card {
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); padding: 11px 13px; cursor: pointer; transition: all .12s;
+}
+.scenario-card:hover { border-color: #A5B4FC; background: #FAFAFE; }
+.scenario-card.selected { border-color: var(--accent); background: var(--accent-bg); }
+.sc-title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+.sc-desc { font-size: 11.5px; color: var(--text-muted); margin-bottom: 7px; }
+.sc-turns { display: flex; flex-direction: column; gap: 3px; }
+.sc-turn {
+  font-size: 11.5px; padding: 3px 8px; border-radius: 4px;
+  background: var(--panel2); border-left: 2px solid #A5B4FC; font-style: italic; color: var(--text-muted);
+}
+.sc-progress { font-size: 10.5px; color: var(--accent); font-weight: 600; margin-top: 4px; }
+
+/* Empty state */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  flex: 1; gap: 8px; padding: 32px; text-align: center;
+}
+.empty-icon { font-size: 28px; opacity: .35; }
+.empty-text { font-size: 12.5px; color: var(--text-muted); max-width: 200px; line-height: 1.5; }
+
+@media (prefers-reduced-motion: reduce) {
+  .node-pulse, .edge-active, .typing-dot, .tool-card.new-flash { animation: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header>
+  <div class="header-left">
+    <div class="logo">CS Chatbot <em>POC</em></div>
+    <div class="badge-pill">LangGraph + GPT</div>
+    <span class="session-label" id="session-label">no session</span>
+  </div>
+  <div class="header-right">
+    <button class="btn btn-ghost" onclick="resetAll()">↺ Reset</button>
+    <button class="btn" id="next-btn" onclick="runNextTurn()" disabled>Next ▸</button>
+    <button class="btn btn-accent" id="play-btn" onclick="toggleAutoPlay()" disabled>⚡ Auto-play</button>
+  </div>
+</header>
+
+<!-- ── Chat panel ───────────────────────────────────────────────────────── -->
+<div id="chat-panel">
+  <div class="chat-messages" id="chat-messages">
+    <div class="empty-state" id="chat-empty">
+      <div class="empty-icon">💬</div>
+      <div class="empty-text">Type a message or pick a demo scenario to start</div>
+    </div>
+  </div>
+
+  <div id="status-strip"></div>
+
+  <div class="composer">
+    <div class="composer-row">
+      <textarea id="msg-input" rows="1" placeholder="Type a customer message…"
+        onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="send-btn" id="send-btn" onclick="sendMsg()">➤</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Right panel ──────────────────────────────────────────────────────── -->
+<div id="right-panel">
+
+  <!-- Graph section -->
+  <div id="graph-section">
+    <div class="section-header">
+      <span class="section-title">Execution Graph</span>
+      <span class="turn-badge" id="turn-label">—</span>
+    </div>
+    <svg id="graph" viewBox="0 0 480 250" preserveAspectRatio="xMidYMid meet"
+         xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arr-idle" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#CBD5E1"/>
+        </marker>
+        <marker id="arr-active" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#6366F1"/>
+        </marker>
+        <marker id="arr-term" markerWidth="7" markerHeight="7" refX="5" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="#10B981"/>
+        </marker>
+      </defs>
+
+      <!-- Edges (drawn below nodes) -->
+      <!-- START → intent_detection -->
+      <path id="e-start-intent" class="edge-idle" d="M 240,40 L 240,75" marker-end="url(#arr-idle)"/>
+      <!-- intent_detection → response_generation -->
+      <path id="e-intent-response" class="edge-idle" d="M 310,109 C 350,120 390,128 390,153" marker-end="url(#arr-idle)"/>
+      <!-- intent_detection → clarify -->
+      <path id="e-intent-clarify" class="edge-idle" d="M 170,109 C 130,120 90,128 90,153" marker-end="url(#arr-idle)"/>
+      <!-- response_generation → END -->
+      <path id="e-response-end" class="edge-idle" d="M 390,196 C 390,215 300,228 270,233" marker-end="url(#arr-idle)"/>
+      <!-- clarify → END -->
+      <path id="e-clarify-end" class="edge-idle" d="M 90,196 C 90,215 180,228 210,233" marker-end="url(#arr-idle)"/>
+
+      <!-- Edge labels -->
+      <text x="352" y="134" font-size="9" fill="#94A3B8" font-family="monospace" text-anchor="middle" id="lbl-respond">respond</text>
+      <text x="128" y="134" font-size="9" fill="#94A3B8" font-family="monospace" text-anchor="middle" id="lbl-clarify">clarify</text>
+
+      <!-- Nodes -->
+      <g id="n-START" class="node-idle" style="transform-origin:240px 27px">
+        <rect x="207" y="14" width="66" height="26" rx="13"/>
+        <text x="240" y="31" text-anchor="middle" font-family="inherit">START</text>
+      </g>
+
+      <g id="n-intent_detection" class="node-idle" style="transform-origin:240px 92px">
+        <rect x="160" y="75" width="160" height="34" rx="8"/>
+        <text x="240" y="89" text-anchor="middle" font-family="inherit">Intent</text>
+        <text x="240" y="103" text-anchor="middle" font-family="inherit">Detection</text>
+      </g>
+
+      <g id="n-response_generation" class="node-idle" style="transform-origin:390px 175px">
+        <rect x="305" y="153" width="170" height="43" rx="8"/>
+        <text x="390" y="170" text-anchor="middle" font-family="inherit">Response</text>
+        <text x="390" y="185" text-anchor="middle" font-family="inherit">Generation</text>
+      </g>
+
+      <g id="n-clarify" class="node-idle" style="transform-origin:90px 175px">
+        <rect x="30" y="153" width="120" height="43" rx="8"/>
+        <text x="90" y="178" text-anchor="middle" font-family="inherit">Clarify</text>
+      </g>
+
+      <g id="n-END" class="node-idle" style="transform-origin:240px 236px">
+        <rect x="207" y="223" width="66" height="26" rx="13"/>
+        <text x="240" y="240" text-anchor="middle" font-family="inherit">END</text>
+      </g>
+    </svg>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('tools')">Tool Calls</button>
+    <button class="tab-btn" onclick="switchTab('intents')">Intents</button>
+    <button class="tab-btn" onclick="switchTab('demo')">Demo Scenarios</button>
+  </div>
+
+  <!-- Tool calls pane -->
+  <div id="pane-tools" class="tab-pane active">
+    <div class="tools-header">
+      <span class="tools-count" id="tools-count">No tool calls yet</span>
+      <button class="btn-ghost" style="font-size:11px;cursor:pointer;background:none;border:none;color:#64748B" onclick="toggleAllCards()">Collapse all</button>
+    </div>
+    <div id="tools-list" style="padding-bottom:12px"></div>
+    <div class="empty-state" id="tools-empty">
+      <div class="empty-icon">🔧</div>
+      <div class="empty-text">Tool calls from the last turn appear here</div>
+    </div>
+  </div>
+
+  <!-- Intents pane -->
+  <div id="pane-intents" class="tab-pane">
+    <div id="intents-list" style="padding-bottom:12px"></div>
+    <div class="empty-state" id="intents-empty">
+      <div class="empty-icon">🎯</div>
+      <div class="empty-text">Detected intents appear here after each turn</div>
+    </div>
+  </div>
+
+  <!-- Demo scenarios pane -->
+  <div id="pane-demo" class="tab-pane">
+    <div class="demo-pane-inner">
+      <div class="demo-controls">
+        <button class="btn btn-accent" id="run-btn" onclick="runNextTurn()" disabled>▶ Run Next Turn</button>
+        <div class="speed-row">
+          Delay: <input type="range" id="speed-range" min="600" max="4000" value="1800" step="200">
+          <span id="speed-val">1.8s</span>
+        </div>
+      </div>
+      <div id="scenario-list">
+        <div class="empty-state"><div class="empty-icon">⏳</div><div class="empty-text">Loading…</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ───────────────────────────────────────────────────────────────────
+let sessionId = null;
+let isLoading = false;
+let turnCount = 0;
+
+let scenarios = [];
+let selScenario = null;   // { ...scenario, _turn: 0 }
+let autoPlaying = false;
+let autoTimer = null;
+
+// ── Boot ────────────────────────────────────────────────────────────────────
+addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('speed-range').addEventListener('input', e => {
+    document.getElementById('speed-val').textContent = (e.target.value / 1000).toFixed(1) + 's';
+  });
+  await loadScenarios();
+});
+
+// ── Tabs ────────────────────────────────────────────────────────────────────
+const TAB_ORDER = ['tools','intents','demo'];
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', TAB_ORDER[i]===name));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById('pane-'+name).classList.add('active');
+}
+
+// ── Send message ─────────────────────────────────────────────────────────────
+async function sendMsg(override) {
+  const inp = document.getElementById('msg-input');
+  const text = override !== undefined ? override : inp.value.trim();
+  if (!text || isLoading) return;
+  inp.value = '';
+  autoResize(inp);
+  hideEmpty('chat-empty');
+
+  appendHumanMsg(text);
+  const typingEl = appendTyping();
+  setLoading(true);
+
+  try {
+    const res = await fetch('/chat', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({message: text, session_id: sessionId}),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+
+    sessionId = data.session_id;
+    document.getElementById('session-label').textContent = 'session: ' + sessionId.slice(0,8) + '…';
+    turnCount++;
+    document.getElementById('turn-label').textContent = `turn #${turnCount}`;
+
+    typingEl.remove();
+    appendBotMsg(data);
+    updateStatusStrip(data);
+    await animateGraph(data.turn_debug?.nodes_executed || []);
+    updateTools(data.turn_debug?.tool_calls || []);
+    updateIntents(data.intents || []);
+  } catch(e) {
+    typingEl.remove();
+    appendSysLine('⚠ Error: ' + e.message);
+  }
+  setLoading(false);
+}
+
+function handleKey(e) {
+  if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+}
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 110) + 'px';
+}
+function setLoading(v) {
+  isLoading = v;
+  document.getElementById('send-btn').disabled = v;
+  document.getElementById('msg-input').disabled = v;
+}
+
+// ── Chat rendering ───────────────────────────────────────────────────────────
+function appendHumanMsg(text) {
+  const c = document.getElementById('chat-messages');
+  const d = document.createElement('div');
+  d.className = 'msg human';
+  d.innerHTML = `
+    <div class="msg-avatar">👤</div>
+    <div class="msg-body">
+      <div class="msg-name">Customer</div>
+      <div class="msg-bubble">${esc(text)}</div>
+    </div>`;
+  c.appendChild(d);
+  scrollChat();
+}
+
+function appendBotMsg(data) {
+  const c = document.getElementById('chat-messages');
+  const d = document.createElement('div');
+  let cls = 'msg bot';
+  if (data.awaiting_clarification) cls += ' clarify';
+  if (data.requires_handover) cls += ' handover';
+  d.className = cls;
+
+  const chips = [];
+  (data.intents || []).forEach(i => {
+    const sc = i.status.replace(/\s/g,'_').toLowerCase();
+    chips.push(`<span class="chip chip-${sc}">${esc(i.intent.replace(/_/g,' '))}</span>`);
+  });
+  if (data.awaiting_clarification) chips.push('<span class="chip chip-needs_info">⚠ needs info</span>');
+  if (data.requires_handover) chips.push('<span class="chip chip-handover">→ human agent</span>');
+  const toolCount = data.turn_debug?.tool_calls?.length || 0;
+  if (toolCount) chips.push(`<span class="chip chip-tool">🔧 ${toolCount} tool${toolCount>1?'s':''}</span>`);
+
+  d.innerHTML = `
+    <div class="msg-avatar">🤖</div>
+    <div class="msg-body">
+      <div class="msg-name">Support Agent</div>
+      <div class="msg-bubble">${esc(data.response)}</div>
+      ${chips.length ? `<div class="msg-tags">${chips.join('')}</div>` : ''}
+    </div>`;
+  c.appendChild(d);
+  scrollChat();
+}
+
+function appendTyping() {
+  const c = document.getElementById('chat-messages');
+  const d = document.createElement('div');
+  d.className = 'msg bot';
+  d.innerHTML = `
+    <div class="msg-avatar">🤖</div>
+    <div class="msg-body">
+      <div class="msg-name">Support Agent</div>
+      <div class="typing-wrap">
+        <div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div>
+      </div>
+    </div>`;
+  c.appendChild(d);
+  scrollChat();
+  return d;
+}
+
+function appendSysLine(text) {
+  const c = document.getElementById('chat-messages');
+  const d = document.createElement('div');
+  d.className = 'sys-line';
+  d.textContent = text;
+  c.appendChild(d);
+  scrollChat();
+}
+
+function scrollChat() {
+  const c = document.getElementById('chat-messages');
+  c.scrollTop = c.scrollHeight;
+}
+
+// ── Status strip ─────────────────────────────────────────────────────────────
+function updateStatusStrip(data) {
+  const s = document.getElementById('status-strip');
+  s.className = '';
+  if (data.requires_handover) {
+    s.className = 'handover';
+    s.textContent = '🔴 Requires human agent escalation';
+  } else if (data.awaiting_clarification) {
+    s.className = 'clarify';
+    s.textContent = '⚠ Awaiting clarification from customer';
+  }
+}
+
+// ── Graph animation ───────────────────────────────────────────────────────────
+const EDGE_MAP = {
+  START:               ['e-start-intent'],
+  intent_detection:    [],      // filled dynamically
+  response_generation: ['e-response-end'],
+  clarify:             ['e-clarify-end'],
+};
+
+async function animateGraph(nodesExecuted) {
+  // Reset all to idle
+  const allNodes = ['START','intent_detection','response_generation','clarify','END'];
+  allNodes.forEach(n => setNodeState(n, 'idle'));
+  ['e-start-intent','e-intent-response','e-intent-clarify','e-response-end','e-clarify-end'].forEach(e => {
+    const el = document.getElementById(e);
+    if (el) { el.className = 'edge-idle'; el.setAttribute('marker-end','url(#arr-idle)'); }
+  });
+  // Reset edge label colors
+  ['lbl-respond','lbl-clarify'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.setAttribute('fill','#94A3B8');
+  });
+
+  if (!nodesExecuted.length) return;
+
+  const isClarifyPath = nodesExecuted.includes('clarify');
+  const seq = ['START', 'intent_detection'];
+  const branch = isClarifyPath ? 'clarify' : 'response_generation';
+  seq.push(branch, 'END');
+
+  const branchEdge = isClarifyPath ? 'e-intent-clarify' : 'e-intent-response';
+  const branchLabel = isClarifyPath ? 'lbl-clarify' : 'lbl-respond';
+  const branchEndEdge = isClarifyPath ? 'e-clarify-end' : 'e-response-end';
+  const edgeSeq = ['e-start-intent', branchEdge, branchEndEdge];
+
+  const delay = ms => new Promise(r => setTimeout(r, ms));
+  const STEP = 240;
+
+  for (let i = 0; i < seq.length; i++) {
+    const node = seq[i];
+    const state = node === 'END' ? 'term' : 'active';
+    setNodeState(node, state);
+    pulseNode(node);
+    if (edgeSeq[i]) {
+      const el = document.getElementById(edgeSeq[i]);
+      if (el) {
+        el.className = 'edge-active';
+        el.setAttribute('marker-end', node==='END' ? 'url(#arr-term)' : 'url(#arr-active)');
+      }
+      if (branchLabel && i === 1) {
+        const lbl = document.getElementById(branchLabel);
+        if (lbl) lbl.setAttribute('fill','#6366F1');
+      }
+    }
+    await delay(STEP);
+  }
+}
+
+function setNodeState(nodeId, state) {
+  const el = document.getElementById('n-' + nodeId);
+  if (!el) return;
+  el.className = 'node-' + state;
+}
+
+function pulseNode(nodeId) {
+  const el = document.getElementById('n-' + nodeId);
+  if (!el) return;
+  el.classList.remove('node-pulse');
+  void el.offsetWidth; // reflow
+  el.classList.add('node-pulse');
+}
+
+// ── Tool calls ─────────────────────────────────────────────────────────────
+function updateTools(calls) {
+  const list = document.getElementById('tools-list');
+  const empty = document.getElementById('tools-empty');
+  const count = document.getElementById('tools-count');
+  list.innerHTML = '';
+  if (!calls.length) {
+    empty.style.display = 'flex';
+    count.textContent = 'No tool calls this turn';
+    return;
+  }
+  empty.style.display = 'none';
+  count.textContent = `${calls.length} tool call${calls.length>1?'s':''} this turn`;
+
+  calls.forEach(tc => {
+    const ok = tc.output?.found !== false && !tc.output?.error;
+    const card = document.createElement('div');
+    card.className = 'tool-card open new-flash';
+    card.innerHTML = `
+      <div class="tool-card-head" onclick="this.parentElement.classList.toggle('open')">
+        <div class="status-dot ${ok?'dot-ok':'dot-err'}"></div>
+        <span class="tool-name">${esc(tc.tool_name)}</span>
+        <span class="tool-intent-chip">${esc(tc.intent.replace(/_/g,' '))}</span>
+        <span class="chevron">▶</span>
+      </div>
+      <div class="tool-body">
+        <div class="io-grid">
+          <div class="io-section">
+            <h4>Input <button class="copy-btn" onclick="copyJson(this,'${esc(JSON.stringify(tc.inputs))}')">copy</button></h4>
+            <pre class="code-block">${colorJson(tc.inputs)}</pre>
+          </div>
+          <div class="io-section">
+            <h4>Output <button class="copy-btn" onclick="copyJson(this,'${esc(JSON.stringify(tc.output))}')">copy</button></h4>
+            <pre class="code-block">${colorJson(tc.output)}</pre>
+          </div>
+        </div>
+      </div>`;
+    list.appendChild(card);
+  });
+}
+
+function toggleAllCards() {
+  const open = document.querySelectorAll('.tool-card.open').length > 0;
+  document.querySelectorAll('.tool-card').forEach(c => c.classList.toggle('open', !open));
+}
+
+function copyJson(btn, raw) {
+  navigator.clipboard.writeText(JSON.parse('"' + raw.replace(/"/g,'\\"') + '"')).catch(()=>{});
+  btn.textContent = '✓';
+  setTimeout(() => btn.textContent = 'copy', 1200);
+}
+
+// ── Intents ─────────────────────────────────────────────────────────────────
+function updateIntents(intents) {
+  const list = document.getElementById('intents-list');
+  const empty = document.getElementById('intents-empty');
+  list.innerHTML = '';
+  if (!intents.length) { empty.style.display='flex'; return; }
+  empty.style.display = 'none';
+  intents.forEach(i => {
+    const card = document.createElement('div');
+    card.className = 'intent-card';
+    const sc = i.status.replace(/\s/g,'_').toLowerCase();
+    const chips = Object.entries(i.entities||{}).map(([k,v]) =>
+      `<span class="entity-chip"><span class="entity-key">${esc(k)}: </span>${esc(v)}</span>`
+    ).join('');
+    const missing = (i.missing_slots||[]).length
+      ? `<div class="missing-slots">⚠ Missing: ${esc(i.missing_slots.join(', '))}</div>` : '';
+    card.innerHTML = `
+      <div class="intent-head">
+        <span class="intent-name">${esc(i.intent.replace(/_/g,' '))}</span>
+        <span class="chip chip-${sc}">${esc(i.status.replace(/_/g,' '))}</span>
+      </div>
+      ${chips||missing ? `<div class="intent-body">
+        ${chips ? `<div class="entity-row">${chips}</div>` : ''}
+        ${missing}
+      </div>` : ''}`;
+    list.appendChild(card);
+  });
+}
+
+// ── Demo scenarios ───────────────────────────────────────────────────────────
+async function loadScenarios() {
+  try {
+    const res = await fetch('/demo/scenarios');
+    scenarios = (await res.json()).scenarios || [];
+    renderScenarios();
+  } catch(e) {
+    document.getElementById('scenario-list').innerHTML =
+      '<div class="empty-state"><div class="empty-icon">⚠</div><div class="empty-text">Server not reachable</div></div>';
+  }
+}
+
+function renderScenarios() {
+  const list = document.getElementById('scenario-list');
+  list.innerHTML = '';
+  scenarios.forEach((s, idx) => {
+    const sel = selScenario?.id === s.id;
+    const card = document.createElement('div');
+    card.className = 'scenario-card' + (sel ? ' selected' : '');
+    card.onclick = () => selectScenario(idx);
+    const turns = s.turns.map((t,ti) => {
+      const done = sel && ti < selScenario._turn;
+      return `<div class="sc-turn" style="${done?'opacity:.45':''}">${esc(t)}</div>`;
+    }).join('');
+    const progress = sel ? `<div class="sc-progress">Turn ${selScenario._turn}/${s.turns.length}</div>` : '';
+    card.innerHTML = `
+      <div class="sc-title">${esc(s.title)}</div>
+      <div class="sc-desc">${esc(s.description)}</div>
+      <div class="sc-turns">${turns}</div>
+      ${progress}`;
+    list.appendChild(card);
+  });
+}
+
+function selectScenario(idx) {
+  stopAutoPlay();
+  const s = scenarios[idx];
+  selScenario = {...s, _turn: 0};
+  resetSession();
+  appendSysLine(`📋 ${s.title} — ${s.description}`);
+  enableDemoControls(true);
+  renderScenarios();
+  switchTab('demo');
+  // Pre-fill textarea with first turn
+  const inp = document.getElementById('msg-input');
+  inp.value = s.turns[0];
+  autoResize(inp);
+}
+
+function enableDemoControls(on) {
+  document.getElementById('next-btn').disabled = !on;
+  document.getElementById('play-btn').disabled = !on;
+  document.getElementById('run-btn').disabled = !on;
+}
+
+async function runNextTurn() {
+  if (!selScenario) return;
+  if (selScenario._turn >= selScenario.turns.length) {
+    appendSysLine('✅ Scenario complete');
+    stopAutoPlay();
+    enableDemoControls(false);
+    return;
+  }
+  const msg = selScenario.turns[selScenario._turn];
+  selScenario._turn++;
+  // Pre-fill next turn in textarea
+  const inp = document.getElementById('msg-input');
+  if (selScenario._turn < selScenario.turns.length) {
+    inp.value = selScenario.turns[selScenario._turn];
+    autoResize(inp);
+  } else {
+    inp.value = '';
+    autoResize(inp);
+  }
+  renderScenarios();
+  switchTab('tools');
+  await sendMsg(msg);
+}
+
+function toggleAutoPlay() {
+  if (autoPlaying) { stopAutoPlay(); return; }
+  autoPlaying = true;
+  document.getElementById('play-btn').textContent = '⏸ Pause';
+  document.getElementById('play-btn').classList.remove('btn-accent');
+  document.getElementById('play-btn').style.background = '#DC2626';
+  scheduleNext();
+}
+function stopAutoPlay() {
+  autoPlaying = false;
+  clearTimeout(autoTimer);
+  const b = document.getElementById('play-btn');
+  b.textContent = '⚡ Auto-play';
+  b.style.background = '';
+}
+async function scheduleNext() {
+  if (!autoPlaying) return;
+  await runNextTurn();
+  const delay = Number(document.getElementById('speed-range').value);
+  if (autoPlaying && selScenario && selScenario._turn < selScenario.turns.length) {
+    autoTimer = setTimeout(scheduleNext, delay);
+  } else {
+    stopAutoPlay();
+  }
+}
+
+function resetSession() {
+  sessionId = null;
+  turnCount = 0;
+  document.getElementById('session-label').textContent = 'no session';
+  document.getElementById('turn-label').textContent = '—';
+  document.getElementById('chat-messages').innerHTML = '';
+  document.getElementById('chat-empty').style.display = 'flex';
+  document.getElementById('status-strip').className = '';
+  document.getElementById('tools-list').innerHTML = '';
+  document.getElementById('tools-empty').style.display = 'flex';
+  document.getElementById('tools-count').textContent = 'No tool calls yet';
+  document.getElementById('intents-list').innerHTML = '';
+  document.getElementById('intents-empty').style.display = 'flex';
+  // Reset graph
+  animateGraph([]);
+}
+
+function resetAll() {
+  stopAutoPlay();
+  selScenario = null;
+  resetSession();
+  enableDemoControls(false);
+  renderScenarios();
+  document.getElementById('msg-input').value = '';
+  autoResize(document.getElementById('msg-input'));
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function hideEmpty(id) {
+  const el = document.getElementById(id);
+  if (el) el.style.display = 'none';
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function colorJson(obj) {
+  const raw = JSON.stringify(obj, null, 2);
+  return raw.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, match => {
+    let cls = 'json-num';
+    if (/^"/.test(match)) {
+      cls = /:$/.test(match) ? 'json-key' : 'json-str';
+    } else if (/true|false/.test(match)) {
+      cls = 'json-bool';
+    } else if (/null/.test(match)) {
+      cls = 'json-null';
+    }
+    return `<span class="${cls}">${esc(match)}</span>`;
+  });
+}
+</script>
+</body>
+</html>
