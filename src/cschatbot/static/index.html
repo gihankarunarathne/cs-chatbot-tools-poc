@@ -959,7 +959,8 @@ function resetSession() {
   turnCount = 0;
   document.getElementById('session-label').textContent = 'no session';
   document.getElementById('turn-label').textContent = '—';
-  document.getElementById('chat-messages').innerHTML = '';
+  const cm = document.getElementById('chat-messages');
+  [...cm.querySelectorAll('.bubble-wrap, .sys-line')].forEach(el => el.remove());
   document.getElementById('chat-empty').style.display = 'flex';
   document.getElementById('status-strip').className = '';
   document.getElementById('tools-list').innerHTML = '';

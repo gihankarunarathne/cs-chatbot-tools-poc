@@ -94,6 +94,7 @@ def response_generation_node(state: GraphState) -> dict:
     return {
         "intents": updated_intents,
         "final_response": final_text,
+        "clarification_question": None,
         "messages": [AIMessage(content=final_text)],
     }
 
