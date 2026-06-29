@@ -1,4 +1,4 @@
-.PHONY: install run test lint eval eval-category
+.PHONY: install run test lint simulate eval eval-category
 
 install:
 	uv sync --extra dev
@@ -23,3 +23,10 @@ eval:
 # Run a single category: make eval-category CAT=order_tracking
 eval-category:
 	uv run python -m tests.eval.runner --category $(CAT)
+
+# Multi-turn simulation: make simulate (SIM-01), make simulate SCENARIO=SIM-04, make simulate-all
+simulate:
+	uv run python -m tests.simulation --scenario $(or $(SCENARIO),SIM-01) --verbose
+
+simulate-all:
+	uv run python -m tests.simulation --all
