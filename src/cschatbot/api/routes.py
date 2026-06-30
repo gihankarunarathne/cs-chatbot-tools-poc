@@ -93,7 +93,7 @@ async def chat(request: Request, body: ChatRequest):
     response_text = final_state.get("final_response") or "I'm sorry, I couldn't process your request."
     intents = final_state.get("intents", [])
     requires_handover = final_state.get("requires_handover", False)
-    awaiting_clarification = bool(final_state.get("clarification_question"))
+    awaiting_clarification = bool(final_state.get("clarification_question")) and not requires_handover
 
     intent_debug = [
         IntentDebug(

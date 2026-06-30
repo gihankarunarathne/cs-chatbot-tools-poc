@@ -17,7 +17,7 @@ Available intents:
 - order_tracking: Customer wants delivery status / ETA of an order
 - refund_request: Customer asks about refund status or wants to request one
 - warranty_claim: Customer wants to claim warranty or check coverage
-- return_request: Customer wants to return or exchange an item
+- return_request: Customer is NOW requesting to return or exchange an item (future action, not a past event)
 - product_info: Questions about product specs, availability, or price
 - general_query: General policy or account questions
 - out_of_scope: Outside support scope or customer wants a human agent
@@ -25,9 +25,13 @@ Available intents:
 For each intent, extract relevant entities:
 - order_id: e.g. "NXY-1001" (normalize to uppercase)
 - product_id: e.g. "PRD-A"
-- Any other relevant identifiers
 
 Support multi-intent: a single message can have multiple intents (e.g. tracking one order AND asking for refund on another).
+
+Classification notes:
+- "I returned my item, where is my refund?" → refund_request ONLY (the return is past-tense context, not a new action)
+- "I want to return my item" → return_request (present intention)
+- "I want to speak to a human/manager" → out_of_scope (even if they mention a specific issue like a refund)
 
 Return a JSON object with a list of detected intents.
 """
@@ -35,8 +39,12 @@ Return a JSON object with a list of detected intents.
 
 class DetectedIntent(BaseModel):
     intent: IntentType
-    entities: dict[str, str]
+    order_id: str | None = None
+    product_id: str | None = None
     query_text: str
+
+    def get_entities(self) -> dict[str, str]:
+        return {k: v for k, v in {"order_id": self.order_id, "product_id": self.product_id}.items() if v is not None}
 
 
 class IntentDetectionResult(BaseModel):
@@ -66,14 +74,14 @@ def intent_detection_node(state: GraphState) -> dict:
     for detected in result.intents:
         registry_entry = INTENT_REGISTRY.get(detected.intent, {})
         required_slots = registry_entry.get("required_slots", [])
-        missing_slots = [s for s in required_slots if s not in detected.entities]
+        missing_slots = [s for s in required_slots if s not in detected.get_entities()]
 
         status = IntentStatus.NEEDS_INFO if missing_slots else IntentStatus.PENDING
 
         item = IntentItem(
             intent=detected.intent,
             status=status,
-            entities=detected.entities,
+            entities=detected.get_entities(),
             missing_slots=missing_slots,
             query_text=detected.query_text,
         )

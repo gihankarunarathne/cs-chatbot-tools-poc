@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cs-chatbot",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "uvicorn", "cschatbot.api.app:create_app", "--factory", "--port", "8080"],
+      "port": 8080
+    }
+  ]
+}
