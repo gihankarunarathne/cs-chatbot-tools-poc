@@ -1,11 +1,16 @@
 from fastapi import APIRouter, HTTPException, Request
 from langchain_core.messages import HumanMessage
+from openai import APIError, APITimeoutError, RateLimitError
 
+from ..config import settings
+from ..logging_setup import get_logger
 from ..models.api import ChatRequest, ChatResponse, IntentDebug, ToolCallDebug, TurnDebug
 from ..models.enums import IntentStatus
+from ..tools.registry import _build_tool_kwargs_for_debug
 from .session import list_sessions, new_session_id, register_session
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 DEMO_SCENARIOS = [
     {
@@ -70,7 +75,13 @@ DEMO_SCENARIOS = [
 
 @router.get("/health")
 async def health():
-    return {"status": "ok"}
+    configured = bool(settings.openai_api_key)
+    return {
+        "status": "ok" if configured else "misconfigured",
+        "openai_configured": configured,
+        "intent_model": settings.intent_model,
+        "response_model": settings.response_model,
+    }
 
 
 @router.get("/demo/scenarios")
@@ -84,11 +95,27 @@ async def chat(request: Request, body: ChatRequest):
 
     session_id = body.session_id or new_session_id()
     register_session(session_id)
+    log = get_logger(__name__, session_id=session_id)
 
     config = {"configurable": {"thread_id": session_id}}
     graph_input = {"messages": [HumanMessage(content=body.message)]}
 
-    final_state = await graph.ainvoke(graph_input, config=config)
+    log.info("chat turn received (%d chars)", len(body.message))
+
+    try:
+        final_state = await graph.ainvoke(graph_input, config=config)
+    except (RateLimitError, APITimeoutError) as e:
+        log.warning("LLM transiently unavailable: %s", e)
+        raise HTTPException(
+            status_code=503,
+            detail="The assistant is temporarily unavailable. Please try again.",
+        ) from e
+    except APIError as e:
+        log.error("LLM API error: %s", e)
+        raise HTTPException(
+            status_code=502,
+            detail="The assistant failed to process your message.",
+        ) from e
 
     response_text = final_state.get("final_response") or "I'm sorry, I couldn't process your request."
     intents = final_state.get("intents", [])
@@ -110,7 +137,6 @@ async def chat(request: Request, body: ChatRequest):
     for item in intents:
         if item.status == IntentStatus.RESOLVED:
             for tool_name, output in item.tool_results.items():
-                from ..tools.registry import _build_tool_kwargs_for_debug
                 inputs = _build_tool_kwargs_for_debug(tool_name, item.entities)
                 tool_calls.append(ToolCallDebug(
                     tool_name=tool_name,
@@ -126,6 +152,13 @@ async def chat(request: Request, body: ChatRequest):
         nodes_executed = ["intent_detection", "response_generation"]
 
     turn_debug = TurnDebug(nodes_executed=nodes_executed, tool_calls=tool_calls)
+
+    log.info(
+        "chat turn done: intents=%s handover=%s clarification=%s",
+        [i.intent for i in intent_debug],
+        requires_handover,
+        awaiting_clarification,
+    )
 
     return ChatResponse(
         session_id=session_id,
